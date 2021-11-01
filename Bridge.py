@@ -8,10 +8,28 @@ Created on Sat Sep 18 19:34:35 2021
 from math import tan, pi, atan, sin, cos, fabs
 import FreeCAD as App
 from FreeCAD import Base, Part
+from PySide2.QtCore import Qt
+from PySide2.QtWidgets import *
 
 doc = App.newDocument()
 
 
+# class Gui(QDialog):
+#     def __init__(self):
+#         super(Gui, self).__init__()
+#         self.setWindowTitle('Bridge Design')
+#         self.setGeometry(100,100,300,400)
+#         self.formGroupBox = QGroupBox('Input Data')
+#         self.segments_per_arch = QLineEdit()
+
+#     def create_input_form(self):
+#         self._form_group_box = QGroupBox("Input Data")
+#         layout = QFormLayout()
+#         layout.addRow(QLabel("Number of bridge segments :"), QLineEdit())
+#         layout.addRow(QLabel("Post Length (mm) :"), QLineEdit())
+#         layout.addRow(QLabel("Post Width (mm) :"), QLineEdit())
+#         layout.addRow(QLabel("Rebate : "), QLineEdit())
+#         self._form_group_box.setLayout(layout)
 # All Data in mm for lengths and ° for angles
 def get_starting_data():
     # a segment is between 2 cross timbers
@@ -118,10 +136,11 @@ def make_end_deck_piece():
         Point(-rebate_width, 0, stob_width + radius),
         Point(-rebate_width, 0, stob_width + radius - rebate),
         Point(0, 0, stob_width + radius - rebate),
+        Point(0, 0, radius),
         Point(-bottom_half, 0, radius),
     ]
     part = points_to_part(points, stob_width)
-    shift = Point(0, (stob_length / 2 + stob_width / 2), 0)  # shift to centre
+    shift = Point(0, (stob_length / 2 - stob_width / 2), 0)  # shift to centre
     part.Placement.move(shift)
     return part
 
@@ -160,7 +179,7 @@ def make_assemblies():
         base = cross_piece.copy()
         current_piece = deck_piece.copy()
         stob_count = (stobs_across_deck + 1) // 2
-        current_piece.Placement.move(-(stob_count//2 - 1/2) * deflection)  # start at one side
+        current_piece.Placement.move(-(stob_count // 2 - 1 / 2) * deflection)  # start at one side
         for _ in range(stob_count):
             base = base.fuse(current_piece)
             current_piece = current_piece.copy()
@@ -171,7 +190,7 @@ def make_assemblies():
         base = cross_piece.copy()
         current_piece = deck_piece.copy()
         stob_count = (stobs_across_deck) // 2
-        current_piece.Placement.move(-(stob_count//2) * deflection)  # start at one side
+        current_piece.Placement.move(-(stob_count // 2) * deflection)  # start at one side
         for _ in range(stob_count):
             base = base.fuse(current_piece)
             current_piece = current_piece.copy()
@@ -189,9 +208,61 @@ def make_assemblies():
     return assembly1, assembly2
 
 
+def make_end_assemblies():
+    cross_piece = make_end_cross_piece()
+    deck_piece = make_end_deck_piece()
+    deflection = Point(0, 2 * stob_width, 0)
+    base1 = cross_piece.copy()
+    current_piece = deck_piece.copy()
+    stob_count = (stobs_across_deck + 1) // 2
+    current_piece.Placement.move(-(stob_count // 2 - 1 / 2) * deflection)  # start at one side
+    for _ in range(stob_count):
+        base1 = base1.fuse(current_piece)
+        current_piece = current_piece.copy()
+        current_piece.Placement.move(deflection)
+    base1.Placement.move(Point(0, -stob_length / 4, 0))
+    base2 = base1.copy()
+    base2.rotate(Point(0, stob_length/4, 0), Point(0, 0, 1), 180)
+    return base1, base2
+
+def assemble_bridge():
+    angle = segment_angle * 180 / pi
+    assembly_0, assembly_1 = make_assemblies()
+    assembly_0L = assembly_0.copy()
+    assembly_0L.rotate(Point(0, 0, 0), Point(0, 1,0), -angle * 2)
+    bridge = assembly_0.fuse(assembly_0L)
+    assembly_0R = assembly_0.copy()
+    assembly_0R.rotate(Point(0, 0, 0), Point(0, 1,0), angle * 2)
+    bridge = bridge.fuse(assembly_0R)
+    assembly_1L = assembly_1.copy()
+    assembly_1L.rotate(Point(0, 0, 0), Point(0, 1,0), -angle)
+    bridge = bridge.fuse(assembly_1L)
+    assembly_1LL = assembly_1L.copy()
+    assembly_1LL.rotate(Point(0, 0, 0), Point(0, 1,0), -angle*2)
+    bridge = bridge.fuse(assembly_1LL)
+    assembly_1R = assembly_1.copy()
+    assembly_1R.rotate(Point(0, 0, 0), Point(0, 1,0), angle)
+    bridge = bridge.fuse(assembly_1R)
+    assembly_1RR = assembly_1R.copy()
+    assembly_1RR.rotate(Point(0, 0, 0), Point(0, 1,0), angle*2)
+    bridge = bridge.fuse(assembly_1RR)
+    right_end, left_end = make_end_assemblies()
+    left_end.rotate(Point(0, 0, 0), Point(0, 1, 0), -angle * 4)
+    bridge = bridge.fuse(left_end)
+    right_end.rotate(Point(0, 0, 0), Point(0, 1, 0), angle * 4)
+    bridge = bridge.fuse(right_end)
+    return bridge
+
 (stob_length, stob_width, segment_count, stobs_across_deck,
  rebate, segment_angle, radius, between_abutments) = get_starting_data()
 
-assembly_1, assembly_2 = make_assemblies()
-Part.show(assembly_1, "Assembly 1")
-Part.show(assembly_2, "Assembly 2")
+bridge = assemble_bridge()
+Part.show(bridge, 'Bridge')
+
+# assembly_1, assembly_2 = make_assemblies()
+# Part.show(assembly_1, "Assembly 1")
+# Part.show(assembly_2, "Assembly 2")
+# assembly_3, assembly_4 = make_end_assemblies()
+# Part.show(assembly_3, "Assembly 3")
+# Part.show(assembly_4, "Assembly 4")
+
